@@ -1,0 +1,145 @@
+diff --git a/CMSIS/DSP/configCore.cmake b/CMSIS/DSP/configCore.cmake
+index 04a984de4..e30cb4ed5 100644
+--- a/CMSIS/DSP/configCore.cmake
++++ b/CMSIS/DSP/configCore.cmake
+@@ -2,10 +2,10 @@ include(CMakePrintHelpers)
+ cmake_policy(SET CMP0077 NEW)
+ 
+ # Config core
+-SET(CORTEXM ON)
++SET(CORTEXM OFF)
+ 
+-option(HARDFP "Hard floating point" ON)
+-option(LITTLEENDIAN "Little endian" ON)
++option(HARDFP "Hard floating point" OFF)
++option(LITTLEENDIAN "Little endian" OFF)
+ option(FASTMATHCOMPUTATIONS "Fast Math enabled" OFF)
+ 
+ # More detailed identification for benchmark results
+diff --git a/CMSIS/NN/Source/ActivationFunctions/CMakeLists.txt b/CMSIS/NN/Source/ActivationFunctions/CMakeLists.txt
+index 6e92c9ad5..b9446ac70 100644
+--- a/CMSIS/NN/Source/ActivationFunctions/CMakeLists.txt
++++ b/CMSIS/NN/Source/ActivationFunctions/CMakeLists.txt
+@@ -14,6 +14,7 @@ configDsp(CMSISNNActivation ${ROOT})
+ ### Includes
+ target_include_directories(CMSISNNActivation PUBLIC "${NN}/Include")
+ target_include_directories(CMSISNNActivation PUBLIC "${ROOT}/CMSIS/DSP/Include")
++target_include_directories(CMSISNNActivation PUBLIC "${ROOT}/CMSIS/Core/Include")
+ 
+ 
+ 
+diff --git a/CMSIS/NN/Source/BasicMathFunctions/CMakeLists.txt b/CMSIS/NN/Source/BasicMathFunctions/CMakeLists.txt
+index 7ed7e6ed0..5c7584ba3 100755
+--- a/CMSIS/NN/Source/BasicMathFunctions/CMakeLists.txt
++++ b/CMSIS/NN/Source/BasicMathFunctions/CMakeLists.txt
+@@ -14,6 +14,5 @@ configDsp(CMSISNNBasicMaths ${ROOT})
+ ### Includes
+ target_include_directories(CMSISNNBasicMaths PUBLIC "${NN}/Include")
+ target_include_directories(CMSISNNBasicMaths PUBLIC "${ROOT}/CMSIS/DSP/Include")
+-
+-
++target_include_directories(CMSISNNBasicMaths PUBLIC "${ROOT}/CMSIS/Core/Include")
+ 
+diff --git a/CMSIS/NN/Source/CMakeLists.txt b/CMSIS/NN/Source/CMakeLists.txt
+index abb85aa24..d56a25928 100644
+--- a/CMSIS/NN/Source/CMakeLists.txt
++++ b/CMSIS/NN/Source/CMakeLists.txt
+@@ -37,6 +37,9 @@ option(NNSUPPORT            "NN Support"            ON)
+ # NN Sources
+ SET(NN ${ROOT}/CMSIS/NN)
+ 
++# Core includes
++SET(CORE_DIR ${ROOT}/CMSIS/Core)
++
+ list(APPEND CMAKE_MODULE_PATH ${NN}/Source)
+ 
+ 
+@@ -90,7 +93,8 @@ if (RESHAPE)
+ endif()
+ 
+ ### Includes
+-target_include_directories(CMSISNN INTERFACE "${NN}/Include")
++target_include_directories(CMSISNN INTERFACE "${NN}/Include"
++                                             "${CORE_DIR}/Include")
+ 
+ 
+ 
+diff --git a/CMSIS/NN/Source/ConcatenationFunctions/CMakeLists.txt b/CMSIS/NN/Source/ConcatenationFunctions/CMakeLists.txt
+index af7ee6219..ac4857d06 100644
+--- a/CMSIS/NN/Source/ConcatenationFunctions/CMakeLists.txt
++++ b/CMSIS/NN/Source/ConcatenationFunctions/CMakeLists.txt
+@@ -15,3 +15,4 @@ configDsp(CMSISNNConcatenation ${ROOT})
+ ### Includes
+ target_include_directories(CMSISNNConcatenation PUBLIC "${NN}/Include")
+ target_include_directories(CMSISNNConcatenation PUBLIC "${ROOT}/CMSIS/DSP/Include")
++target_include_directories(CMSISNNConcatenation PUBLIC "${ROOT}/CMSIS/Core/Include")
+diff --git a/CMSIS/NN/Source/ConvolutionFunctions/CMakeLists.txt b/CMSIS/NN/Source/ConvolutionFunctions/CMakeLists.txt
+index d673e7931..2556fcd17 100644
+--- a/CMSIS/NN/Source/ConvolutionFunctions/CMakeLists.txt
++++ b/CMSIS/NN/Source/ConvolutionFunctions/CMakeLists.txt
+@@ -14,6 +14,7 @@ configDsp(CMSISNNConvolutions ${ROOT})
+ ### Includes
+ target_include_directories(CMSISNNConvolutions PUBLIC "${NN}/Include")
+ target_include_directories(CMSISNNConvolutions PUBLIC "${ROOT}/CMSIS/DSP/Include")
++target_include_directories(CMSISNNConvolutions PUBLIC "${ROOT}/CMSIS/Core/Include")
+ 
+ 
+ 
+diff --git a/CMSIS/NN/Source/FullyConnectedFunctions/CMakeLists.txt b/CMSIS/NN/Source/FullyConnectedFunctions/CMakeLists.txt
+index 7a09c7474..b1a839c95 100644
+--- a/CMSIS/NN/Source/FullyConnectedFunctions/CMakeLists.txt
++++ b/CMSIS/NN/Source/FullyConnectedFunctions/CMakeLists.txt
+@@ -14,6 +14,7 @@ configDsp(CMSISNNFullyConnected ${ROOT})
+ ### Includes
+ target_include_directories(CMSISNNFullyConnected PUBLIC "${NN}/Include")
+ target_include_directories(CMSISNNFullyConnected PUBLIC "${ROOT}/CMSIS/DSP/Include")
++target_include_directories(CMSISNNFullyConnected PUBLIC "${ROOT}/CMSIS/Core/Include")
+ 
+ 
+ 
+diff --git a/CMSIS/NN/Source/NNSupportFunctions/CMakeLists.txt b/CMSIS/NN/Source/NNSupportFunctions/CMakeLists.txt
+index 56bce6862..6f5d7c07b 100644
+--- a/CMSIS/NN/Source/NNSupportFunctions/CMakeLists.txt
++++ b/CMSIS/NN/Source/NNSupportFunctions/CMakeLists.txt
+@@ -14,6 +14,7 @@ configDsp(CMSISNNSupport ${ROOT})
+ ### Includes
+ target_include_directories(CMSISNNSupport PUBLIC "${NN}/Include")
+ target_include_directories(CMSISNNSupport PUBLIC "${ROOT}/CMSIS/DSP/Include")
++target_include_directories(CMSISNNSupport PUBLIC "${ROOT}/CMSIS/Core/Include")
+ 
+ 
+ 
+diff --git a/CMSIS/NN/Source/PoolingFunctions/CMakeLists.txt b/CMSIS/NN/Source/PoolingFunctions/CMakeLists.txt
+index 36e2ff7c4..2b10365d1 100644
+--- a/CMSIS/NN/Source/PoolingFunctions/CMakeLists.txt
++++ b/CMSIS/NN/Source/PoolingFunctions/CMakeLists.txt
+@@ -14,6 +14,7 @@ configDsp(CMSISNNPooling ${ROOT})
+ ### Includes
+ target_include_directories(CMSISNNPooling PUBLIC "${NN}/Include")
+ target_include_directories(CMSISNNPooling PUBLIC "${ROOT}/CMSIS/DSP/Include")
++target_include_directories(CMSISNNPooling PUBLIC "${ROOT}/CMSIS/Core/Include")
+ 
+ 
+ 
+diff --git a/CMSIS/NN/Source/ReshapeFunctions/CMakeLists.txt b/CMSIS/NN/Source/ReshapeFunctions/CMakeLists.txt
+index d6bfa6ad0..9f12b267a 100644
+--- a/CMSIS/NN/Source/ReshapeFunctions/CMakeLists.txt
++++ b/CMSIS/NN/Source/ReshapeFunctions/CMakeLists.txt
+@@ -16,4 +16,5 @@ configDsp(CMSISNNReshape ${ROOT})
+ ### Includes
+ target_include_directories(CMSISNNReshape PUBLIC "${NN}/Include")
+ target_include_directories(CMSISNNReshape PUBLIC "${ROOT}/CMSIS/DSP/Include")
++target_include_directories(CMSISNNReshape PUBLIC "${ROOT}/CMSIS/Core/Include")
+ 
+diff --git a/CMSIS/NN/Source/SoftmaxFunctions/CMakeLists.txt b/CMSIS/NN/Source/SoftmaxFunctions/CMakeLists.txt
+index 87313708a..2c5c04ef3 100644
+--- a/CMSIS/NN/Source/SoftmaxFunctions/CMakeLists.txt
++++ b/CMSIS/NN/Source/SoftmaxFunctions/CMakeLists.txt
+@@ -14,6 +14,7 @@ configDsp(CMSISNNSoftmax ${ROOT})
+ ### Includes
+ target_include_directories(CMSISNNSoftmax PUBLIC "${NN}/Include")
+ target_include_directories(CMSISNNSoftmax PUBLIC "${ROOT}/CMSIS/DSP/Include")
++target_include_directories(CMSISNNSoftmax PUBLIC "${ROOT}/CMSIS/Core/Include")
+ 
+ 
+ 

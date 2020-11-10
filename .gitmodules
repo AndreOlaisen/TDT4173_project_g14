@@ -1,0 +1,6 @@
+[submodule "cmsis_nn/CMSIS_5"]
+	path = cmsis_nn/CMSIS_5
+	url = https://github.com/ARM-software/CMSIS_5.git
+[submodule "cmsis_nn/cfile"]
+	path = cmsis_nn/cfile
+	url = https://github.com/cogu/cfile.git
