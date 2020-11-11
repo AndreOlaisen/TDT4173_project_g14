@@ -7,4 +7,4 @@ set(GCC ON)
 
 add_subdirectory("${ROOT}/CMSIS/NN/Source")
 add_subdirectory(example)
-# add_subdirectory(generated)
+add_subdirectory(generated)
