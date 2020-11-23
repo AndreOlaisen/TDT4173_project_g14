@@ -1,3 +1,5 @@
+import argparse
+import os
 import pathlib
 import matplotlib.pyplot as plt
 import torch
@@ -8,8 +10,10 @@ import torchvision
 import collections
 from torch import nn
 from tqdm import tqdm
-from dataloaders import load_cifar10
+from dataloaders import load_cifar10, get_cifar10_transforms
 from progressbar import ProgressBar
+from model_export import Log2HistActivationStats, get_batchnorm_mvs, RunStats, \
+    make_model_filename, make_stats_filename, make_transform_filename
 
 
 def compute_loss_and_accuracy(
@@ -51,6 +55,34 @@ def compute_loss_and_accuracy(
     accuracy = correct_predictions/total_size
     average_loss /= counter
     return average_loss, accuracy
+
+
+def compute_model_stats(
+    dataloader: torch.utils.data.DataLoader,
+    model: torch.nn.Module):
+    """
+        Record log2 activation histogram for each layer in the model
+        as well as running means and variances for batchnorm layers,
+        over the whole dataset in dataloader.
+    """
+
+    confusion_matrix = torch.zeros(10, 10, dtype=torch.int64)
+    hist_stats = Log2HistActivationStats()
+    hist_stats.attach(model)
+    with torch.no_grad():
+        confusion_matrix = utils.to_cuda(confusion_matrix)
+        for X_batch, Y_batch in dataloader:
+            X_batch = utils.to_cuda(X_batch)
+            pred = model(X_batch).argmax(dim=1)
+            for i in range(Y_batch.shape[0]):
+                label = Y_batch[i].item()
+                pred_label = pred[i].item()
+                confusion_matrix[label, pred_label] = confusion_matrix[label, pred_label] + 1
+    hist_stats.detach()
+    act_hist = hist_stats.hist
+    batchnorm_mvs = get_batchnorm_mvs(model)
+    return confusion_matrix, act_hist, batchnorm_mvs, X_batch[0].shape
+
 
 # Model that reaches 77.64% accuracy on test dataset
 class Model_1(nn.Module):
@@ -151,8 +183,107 @@ class Model_1(nn.Module):
         assert out.shape == (batch_size, self.num_classes),\
             f"Expected output of forward pass to be: {expected_shape}, but got: {out.shape}"
         return out
-    
-    
+
+
+class Model_2(nn.Module):
+
+    def __init__(self,
+                 image_channels,
+                 num_classes):
+        """
+            Is called when model is initialized.
+            Args:
+                image_channels. Number of color channels in image (3)
+                num_classes: Number of classes we want to predict (10)
+        """
+        super().__init__()
+        
+        self.full_model = nn.Sequential(
+            # Conv1
+            # - 32 x 32 x 3 input
+            # - 5 x 5 kernel
+            # - 2 padding
+            # - 1 stride
+            # - 32 x 32 x 32 output
+            nn.Conv2d(in_channels=3, out_channels=32, kernel_size=5, stride=1, padding=2),
+
+            # nn.BatchNorm2d(num_features=32),
+
+            # ReLU
+            nn.ReLU(),
+
+            # Pool1:
+            # - Max. pool
+            # - 3 x 3 kernel
+            # - 2 stride
+            # - 0 padding (this reduces the area in pytorch, need to investigate how cmsis-nn does it...)
+            # - 16 x 16 x 32 output
+            nn.MaxPool2d(kernel_size=3, stride=2, padding=1),
+
+            # Conv2:
+            # - 16 x 16 x 32 input
+            # - 5 x 5 kernel
+            # - 2 padding
+            # - 1 stride
+            # - 16 x 16 x 16 output
+            nn.Conv2d(in_channels=32, out_channels=16, kernel_size=5, stride=1, padding=2),
+
+            # nn.BatchNorm2d(num_features=16),
+
+            # ReLU
+            nn.ReLU(),
+
+            # Pool2:
+            # - Max. pool
+            # - 3 x 3 kernel
+            # - 2 stride
+            # - 0 padding
+            # - 8 x 8 x 16 output
+            nn.MaxPool2d(kernel_size=3, stride=2, padding=1),
+
+            # Conv3:
+            # - 8 x 8 x 16 input
+            # - 5 x 5 kernel
+            # - 2 padding
+            # - 1 stride
+            # - 8 x 8 x 32 output
+            nn.Conv2d(in_channels=16, out_channels=32, kernel_size=5, stride=1, padding=2),
+
+            # nn.BatchNorm2d(num_features=32),
+
+            # ReLU
+            nn.ReLU(),
+
+            # Pool3:
+            # - Max. pool
+            # - 3 x 3 kernel
+            # - 2 stride
+            # - 0 padding
+            # - 4 x 4 x 32 output
+            nn.MaxPool2d(kernel_size=3, stride=2, padding=1),
+
+            # FC:
+            # - 4 x 4 x 32 input
+            # - 10 output
+            nn.Flatten(),
+            nn.Linear(in_features=4 * 4 * 32, out_features=10),
+            # nn.BatchNorm1d(num_features=10),
+
+            # SoftMax:
+            # - 10 input/output
+            # nn.LogSoftmax(dim=1)
+        )
+
+    def forward(self, x):
+        """
+        Performs a forward pass through the model
+        Args:
+            x: Input image, shape: [batch_size, 3, 32, 32]
+        """
+
+        return self.full_model(x)
+
+
 class Trainer:
 
     def __init__(self,
@@ -312,9 +443,10 @@ class Trainer:
         if state_dict is None:
             print(
                 f"Could not load best checkpoint. Did not find under: {self.checkpoint_dir}")
-            return
+            return False
         print("Best model loaded.")
         self.model.load_state_dict(state_dict)
+        return True
     
     def print_outputs(self): 
         # Display the final results 
@@ -347,16 +479,16 @@ def create_plots(trainer1: Trainer, name: str):
     plt.legend()
     plt.savefig(plot_path.joinpath(f"{name}_plot.png"))
     plt.show()
-    return  
+    return
 
 
-if __name__ == "__main__":
+def train_model(model_cls=Model_1, skip_train=False):
     epochs = 10
     batch_size = 64
     learning_rate = 5e-2
     early_stop_count = 4
     dataloaders = load_cifar10(batch_size)
-    model = Model_1(image_channels=3, num_classes=10)
+    model = model_cls(image_channels=3, num_classes=10)
     trainer1 = Trainer(
         batch_size,
         learning_rate,
@@ -365,7 +497,32 @@ if __name__ == "__main__":
         model,
         dataloaders
     )
-    trainer1.load_best_model()
-    trainer1.train()
+    found = trainer1.load_best_model()
+    if not skip_train:
+        trainer1.train()
+        create_plots(trainer1, model.__class__.__name__)
+        return model, dataloaders
+    else:
+        return (model, dataloaders) if found else (None, None)
 
-    create_plots(trainer1, "Model1")
+
+def export_model_stats(model, dataloaders, base_path, name_out):
+    model_path = base_path/make_model_filename(name_out)
+    transform_path = base_path/make_transform_filename(name_out)
+    stats_path = base_path/make_stats_filename(name_out)
+    _, __, dl_test = dataloaders
+    print("Computing model stats on test data.")
+    _, act_hist, batchnorm_mvs, in_shape = compute_model_stats(dl_test, model)
+    print(f"Saving model to {model_path}.")
+    torch.save(nn.Sequential(*list(model.modules())), model_path)
+    print(f"Saving transforms to {transform_path}.")
+    _, transform_valid = get_cifar10_transforms(transfer_learning=False)
+    torch.save(transform_valid, transform_path)
+    print(f"Saving model stats to {stats_path}.")
+    run_stats = RunStats(act_hist, batchnorm_mvs, in_shape)
+    torch.save(run_stats, stats_path)
+    return model_path, transform_path, stats_path
+
+
+if __name__ == "__main__":
+    train_model()

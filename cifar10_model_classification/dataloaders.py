@@ -6,15 +6,13 @@ import numpy as np
 np.random.seed(0)
 
 
-def load_cifar10(batch_size: int, validation_fraction: float = 0.1, transfer_learning: bool = False
-                 ) -> typing.List[torch.utils.data.DataLoader]:
-    
+def get_cifar10_transforms(transfer_learning: bool = False):
     if transfer_learning:
         mean=[0.485, 0.456, 0.406]
         std=[0.229, 0.224, 0.225]
     else:
         mean = (0.5, 0.5, 0.5)
-        std = (.25, .25, .25)
+        std = (1.0, 1.0, 1.0) # (.25, .25, .25)
     # Note that transform train will apply the same transform for
     # validation!
     if transfer_learning:
@@ -37,6 +35,14 @@ def load_cifar10(batch_size: int, validation_fraction: float = 0.1, transfer_lea
             transforms.ToTensor(),
             transforms.Normalize(mean, std)
         ])
+    return transform_train, transform_test  
+
+
+def load_cifar10(batch_size: int, validation_fraction: float = 0.1, transfer_learning: bool = False
+                 ) -> typing.List[torch.utils.data.DataLoader]:
+    
+    transform_train, transform_test = get_cifar10_transforms(transfer_learning)
+
     data_train = datasets.CIFAR10('data/cifar10',
                                   train=True,
                                   download=True,
@@ -46,7 +52,7 @@ def load_cifar10(batch_size: int, validation_fraction: float = 0.1, transfer_lea
                                  train=False,
                                  download=True,
                                  transform=transform_test)
-
+ 
     indices = list(range(len(data_train)))
     split_idx = int(np.floor(validation_fraction * len(data_train)))
 
