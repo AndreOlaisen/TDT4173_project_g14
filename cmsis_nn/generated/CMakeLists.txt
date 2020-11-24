@@ -5,11 +5,11 @@ project("Generated code example")
 add_executable(generated)
 target_link_libraries(generated CMSISNN -lpng)
 
-set(cmsis_dep_sources
-    "${ROOT}/CMSIS/DSP/Source/SupportFunctions/arm_q7_to_float.c")
 FILE(GLOB app_sources ./*.c)
 FILE(GLOB model_sources model/*.c)
+FILE(GLOB util_sources ../util/*.c)
 target_sources(generated PRIVATE
                ${app_sources}
                ${model_sources}
-               ${cmsis_dep_sources})
+               ${util_sources})
+target_include_directories(generated PRIVATE ../util)

@@ -6,18 +6,34 @@
 #include <png.h>
 
 #include "arm_math.h"
+#include "nn_util.h"
 
 #define IMG_DIM         32
 #define IMG_CH          3
 #define IMG_CATEGORIES  10
 
-const char usage[] = "Usage: ./<program> <image.png>\n";
+const char usage[] = "Usage: ./<program> <image.png> [<activation output>]\n";
 
 uint8_t img[IMG_DIM * IMG_DIM * IMG_CH];
 
+/* Category index to names based on torchvision.datasets.CIFAR */
+const char *cat_names[] = {
+    "airplane",
+    "automobile",
+    "bird",
+    "cat",
+    "deer",
+    "dog",
+    "frog",
+    "horse",
+    "ship",
+    "truck"
+};
+
+
 int nn_forward_pass(uint8_t *img, q7_t *out);
 
-static void fatal_error (const char * message, ...)
+static void fatal_error(const char * message, ...)
 {
     va_list args;
     va_start(args, message);
@@ -45,13 +61,13 @@ static int img_init(const char *filename)
 	    fatal_error("Cannot open '%s': %s\n", filename, strerror(errno));
     }
 
-    png_ptr = png_create_read_struct (PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
-    if (! png_ptr) {
+    png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+    if (!png_ptr) {
 	    fatal_error("Cannot create PNG read structure");
     }
 
-    info_ptr = png_create_info_struct (png_ptr);
-    if (! png_ptr) {
+    info_ptr = png_create_info_struct(png_ptr);
+    if (!png_ptr) {
 	    fatal_error("Cannot create PNG info structure");
     }
 
@@ -61,8 +77,11 @@ static int img_init(const char *filename)
 	             &color_type, &interlace_method, &compression_method,
 	             &filter_method);
 
-    if (width != IMG_DIM || height != IMG_DIM) {
+    if (width > IMG_DIM || height > IMG_DIM) {
         fatal_error("Image dimensions invalid: %d x %d\n", width, height);
+    }
+    if (bit_depth != 8) {
+        fatal_error("Invalid bit depth: %d\n", bit_depth);
     }
     /* TODO: maybe validate some of the other parameters. */
 
@@ -86,20 +105,22 @@ static int img_init(const char *filename)
 int main(int argc, char **argv)
 {
     q7_t out[IMG_CATEGORIES];
-    float float_out[10];
 
     /* Read image file. */
     if (argc < 2) {
         fatal_error("No file path provided.\n");
     }
+
     img_init(argv[1]);
+
+    if (argc > 2) {
+        nn_dump_path_set(argv[2]);
+    }
 
     /* Perform forward pass and print results. */
     nn_forward_pass(img, out);
-    arm_q7_to_float(out, float_out, 10);
 
-    for (int i = 0; i < 10; i++)
-    {
-        printf("%d: %f\n", i, float_out[i]);
+    for (int i = 0; i < 10; i++) {
+        printf("%s: %hhd\n", cat_names[i], out[i]);
     }
 }

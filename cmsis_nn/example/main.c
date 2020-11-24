@@ -95,6 +95,24 @@
 #include "arm_nnfunctions.h"
 #include "arm_nnexamples_cifar10_inputs.h"
 
+#include "nn_util.h"
+
+static const char input_name[] = "INPUT";
+
+static const char conv1_name[] = "CONV1";
+static const char relu1_name[] = "RELU1";
+static const char maxpool1_name[] = "MAXPOOL1";
+
+static const char conv2_name[] = "CONV2";
+static const char relu2_name[] = "RELU2";
+static const char maxpool2_name[] = "MAXPOOL2";
+
+static const char conv3_name[] = "CONV3";
+static const char relu3_name[] = "RELU3";
+static const char maxpool3_name[] = "MAXPOOL3";
+
+static const char fc1_name[] = "FC1";
+static const char softmax_name[] = "SOFTMAX";
 
 // include the input and weights
 
@@ -127,6 +145,8 @@ int main()
   q7_t     *img_buffer1 = scratch_buffer;
   q7_t     *img_buffer2 = img_buffer1 + 32 * 32 * 32;
 
+  nn_dump_open();
+
   /* input pre-processing */
   int mean_data[3] = INPUT_MEAN_SHIFT;
   unsigned int scale_data[3] = INPUT_RIGHT_SHIFT;
@@ -138,51 +158,62 @@ int main()
     img_buffer2[i+2] = (q7_t)__SSAT( ((((int)image_data[i+2] - mean_data[2])<<7) + (0x1<<(scale_data[2]-1)))
                              >> scale_data[2], 8);
   }
-  
+  nn_dump_activations(input_name, img_buffer2, 32 * 32 * 3);
+
   // conv1 img_buffer2 -> img_buffer1
   arm_convolve_HWC_q7_RGB(img_buffer2, CONV1_IM_DIM, CONV1_IM_CH, conv1_wt, CONV1_OUT_CH, CONV1_KER_DIM, CONV1_PADDING,
                           CONV1_STRIDE, conv1_bias, CONV1_BIAS_LSHIFT, CONV1_OUT_RSHIFT, img_buffer1, CONV1_OUT_DIM,
                           (q15_t *) col_buffer, NULL);
+  nn_dump_activations(conv1_name, img_buffer1, CONV1_OUT_CH * CONV1_OUT_DIM * CONV1_OUT_DIM);
 
   arm_relu_q7(img_buffer1, CONV1_OUT_DIM * CONV1_OUT_DIM * CONV1_OUT_CH);
+  nn_dump_activations(relu1_name, img_buffer1, CONV1_OUT_CH * CONV1_OUT_DIM * CONV1_OUT_DIM);
 
   // pool1 img_buffer1 -> img_buffer2
   arm_maxpool_q7_HWC(img_buffer1, CONV1_OUT_DIM, CONV1_OUT_CH, POOL1_KER_DIM,
                      POOL1_PADDING, POOL1_STRIDE, POOL1_OUT_DIM, NULL, img_buffer2);
+  nn_dump_activations(maxpool1_name, img_buffer2, CONV1_OUT_CH * POOL1_OUT_DIM * POOL1_OUT_DIM);
 
   // conv2 img_buffer2 -> img_buffer1
   arm_convolve_HWC_q7_fast(img_buffer2, CONV2_IM_DIM, CONV2_IM_CH, conv2_wt, CONV2_OUT_CH, CONV2_KER_DIM,
                            CONV2_PADDING, CONV2_STRIDE, conv2_bias, CONV2_BIAS_LSHIFT, CONV2_OUT_RSHIFT, img_buffer1,
                            CONV2_OUT_DIM, (q15_t *) col_buffer, NULL);
+  nn_dump_activations(conv2_name, img_buffer1, CONV2_OUT_CH * CONV2_OUT_DIM * CONV2_OUT_DIM);
 
   arm_relu_q7(img_buffer1, CONV2_OUT_DIM * CONV2_OUT_DIM * CONV2_OUT_CH);
+  nn_dump_activations(relu2_name, img_buffer1, CONV2_OUT_CH * CONV2_OUT_DIM * CONV2_OUT_DIM);
 
   // pool2 img_buffer1 -> img_buffer2
   arm_maxpool_q7_HWC(img_buffer1, CONV2_OUT_DIM, CONV2_OUT_CH, POOL2_KER_DIM,
                      POOL2_PADDING, POOL2_STRIDE, POOL2_OUT_DIM, col_buffer, img_buffer2);
+  nn_dump_activations(maxpool2_name, img_buffer2, CONV2_OUT_CH * POOL2_OUT_DIM * POOL2_OUT_DIM);
 
 // conv3 img_buffer2 -> img_buffer1
   arm_convolve_HWC_q7_fast(img_buffer2, CONV3_IM_DIM, CONV3_IM_CH, conv3_wt, CONV3_OUT_CH, CONV3_KER_DIM,
                            CONV3_PADDING, CONV3_STRIDE, conv3_bias, CONV3_BIAS_LSHIFT, CONV3_OUT_RSHIFT, img_buffer1,
                            CONV3_OUT_DIM, (q15_t *) col_buffer, NULL);
+  nn_dump_activations(conv3_name, img_buffer1, CONV3_OUT_CH * CONV3_OUT_DIM * CONV3_OUT_DIM);
 
   arm_relu_q7(img_buffer1, CONV3_OUT_DIM * CONV3_OUT_DIM * CONV3_OUT_CH);
+  nn_dump_activations(relu3_name, img_buffer1, CONV3_OUT_CH * CONV3_OUT_DIM * CONV3_OUT_DIM);
 
   // pool3 img_buffer-> img_buffer2
   arm_maxpool_q7_HWC(img_buffer1, CONV3_OUT_DIM, CONV3_OUT_CH, POOL3_KER_DIM,
                      POOL3_PADDING, POOL3_STRIDE, POOL3_OUT_DIM, col_buffer, img_buffer2);
+  nn_dump_activations(maxpool3_name, img_buffer2, CONV3_OUT_CH * POOL3_OUT_DIM * POOL3_OUT_DIM);
 
   arm_fully_connected_q7_opt(img_buffer2, ip1_wt, IP1_DIM, IP1_OUT, IP1_BIAS_LSHIFT, IP1_OUT_RSHIFT, ip1_bias,
                              output_data, (q15_t *) img_buffer1);
+  nn_dump_activations(fc1_name, output_data, IP1_OUT);
 
   arm_softmax_q7(output_data, 10, output_data);
+  nn_dump_activations(softmax_name, output_data, IP1_OUT);
 
-  float float_output[10];
-  arm_q7_to_float(output_data, float_output, 10);
-  
+  nn_dump_close();
+
   for (int i = 0; i < 10; i++)
   {
-      printf("%d: %f\n", i, float_output[i]);
+      printf("%d: %hhd\n", i, output_data[i]);
   }
 
   return 0;

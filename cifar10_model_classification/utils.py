@@ -77,3 +77,10 @@ def load_best_checkpoint(directory: pathlib.Path):
     if not filepath.is_file():
         return None
     return torch.load(directory.joinpath("best.ckpt"))
+
+
+def create_export_path(name):
+    script_path = pathlib.Path(__file__).parent.absolute()
+    path = script_path/"exports"/name
+    path.mkdir(exist_ok=True)
+    return path
