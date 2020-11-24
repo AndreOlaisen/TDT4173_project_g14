@@ -12,7 +12,7 @@ def get_cifar10_transforms(transfer_learning: bool = False):
         std=[0.229, 0.224, 0.225]
     else:
         mean = (0.5, 0.5, 0.5)
-        std = (1.0, 1.0, 1.0) # (.25, .25, .25)
+        std = (.25, .25, .25) # (1.0, 1.0, 1.0) # 
     # Note that transform train will apply the same transform for
     # validation!
     if transfer_learning:
