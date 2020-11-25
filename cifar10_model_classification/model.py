@@ -198,7 +198,7 @@ class Model_2(nn.Module):
         """
         super().__init__()
         
-        self.full_model = nn.Sequential(
+        self.feature_extractor = nn.Sequential(
             # Conv1
             # - 32 x 32 x 3 input
             # - 5 x 5 kernel
@@ -207,7 +207,7 @@ class Model_2(nn.Module):
             # - 32 x 32 x 32 output
             nn.Conv2d(in_channels=3, out_channels=32, kernel_size=5, stride=1, padding=2),
 
-            # nn.BatchNorm2d(num_features=32),
+            nn.BatchNorm2d(num_features=32),
 
             # ReLU
             nn.ReLU(),
@@ -228,7 +228,7 @@ class Model_2(nn.Module):
             # - 16 x 16 x 16 output
             nn.Conv2d(in_channels=32, out_channels=16, kernel_size=5, stride=1, padding=2),
 
-            # nn.BatchNorm2d(num_features=16),
+            nn.BatchNorm2d(num_features=16),
 
             # ReLU
             nn.ReLU(),
@@ -249,7 +249,7 @@ class Model_2(nn.Module):
             # - 8 x 8 x 32 output
             nn.Conv2d(in_channels=16, out_channels=32, kernel_size=5, stride=1, padding=2),
 
-            # nn.BatchNorm2d(num_features=32),
+            nn.BatchNorm2d(num_features=32),
 
             # ReLU
             nn.ReLU(),
@@ -261,13 +261,15 @@ class Model_2(nn.Module):
             # - 0 padding
             # - 4 x 4 x 32 output
             nn.MaxPool2d(kernel_size=3, stride=2, padding=1),
+        )
 
+        self.classifier = nn.Sequential(
             # FC:
             # - 4 x 4 x 32 input
             # - 10 output
             nn.Flatten(),
             nn.Linear(in_features=4 * 4 * 32, out_features=10),
-            # nn.BatchNorm1d(num_features=10),
+            nn.BatchNorm1d(num_features=10),
 
             # SoftMax:
             # - 10 input/output
@@ -281,7 +283,9 @@ class Model_2(nn.Module):
             x: Input image, shape: [batch_size, 3, 32, 32]
         """
 
-        return self.full_model(x)
+        y = self.feature_extractor(x)
+        y = self.classifier(y)
+        return y
 
 
 class Trainer:
@@ -514,7 +518,7 @@ def export_model_stats(model, dataloaders, base_path, name_out):
     print("Computing model stats on test data.")
     _, act_hist, batchnorm_mvs, in_shape = compute_model_stats(dl_test, model)
     print(f"Saving model to {model_path}.")
-    torch.save(nn.Sequential(*list(model.modules())), model_path)
+    torch.save(nn.Sequential(*list(model.children())), model_path)
     print(f"Saving transforms to {transform_path}.")
     _, transform_valid = get_cifar10_transforms(transfer_learning=False)
     torch.save(transform_valid, transform_path)

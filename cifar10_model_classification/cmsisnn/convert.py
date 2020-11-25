@@ -14,7 +14,7 @@ import torchvision.transforms
 from pathlib import Path
 from collections import Counter, namedtuple
 from enum import Enum
-from . import cfile as C
+from .cfile import cfile as C
 from model_export import make_model_filename, make_stats_filename, make_transform_filename
 
 
@@ -375,7 +375,6 @@ class Converter:
         if in_dim.ch > 1 and in_dim.ch * in_dim.dim**2 != mod.in_features:
             raise RuntimeError(f"Bad input dimensions {in_dim.ch}, {in_dim.dim} to linear layer!")
 
-        print("Module biases:", mod.bias)
         qformat_in = layer.get_param(QFormat, "in")
         act_format = self.act_formats.pop(0)
         weight, bias = reorder_linear(mod.weight.data, mod.bias.data, in_dim)
@@ -417,7 +416,6 @@ class Converter:
             weight, bias = reorder_conv2d(prev_weight, prev_bias)
         else:
             prev_dim_in = prev.get_param(Dimension, "in")
-            prev_dim_out = prev.get_param(Dimension, "out")
             weight, bias = reorder_linear(prev_weight, prev_bias, prev_dim_in)
 
         prev_in_format = prev.get_param(QFormat, "in")
@@ -875,6 +873,7 @@ def cmsis_nn_convert(model_dir, model_name, gen_dir, artifact_dir, debug=False):
     # Convert model
     print(f"Loading model from {model_path}.")
     model = torch.load(model_path)
+    print("Model", model)
     print(f"Loading transforms from {transform_path}.")
     transforms = torch.load(transform_path)
     print(f"Loading run stats from {stat_path}.")
