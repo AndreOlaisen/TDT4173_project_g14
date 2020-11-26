@@ -6,13 +6,19 @@ import numpy as np
 np.random.seed(0)
 
 
-def get_cifar10_transforms(transfer_learning: bool = False):
+def get_cifar10_transforms(transfer_learning: bool = False, cmsisnn: bool = False):
     if transfer_learning:
         mean=[0.485, 0.456, 0.406]
-        std=[0.229, 0.224, 0.225]
+        if not cmsisnn:
+            std=[0.229, 0.224, 0.225]
+        else:
+            std = (1.0, 1.0, 1.0)
     else:
         mean = (0.5, 0.5, 0.5)
-        std = (.25, .25, .25) # (1.0, 1.0, 1.0) # 
+        if not cmsisnn:
+            std = (0.25, 0.25, 0.25)
+        else:
+            std = (1.0, 1.0, 1.0)
     # Note that transform train will apply the same transform for
     # validation!
     if transfer_learning:
@@ -38,10 +44,10 @@ def get_cifar10_transforms(transfer_learning: bool = False):
     return transform_train, transform_test  
 
 
-def load_cifar10(batch_size: int, validation_fraction: float = 0.1, transfer_learning: bool = False
-                 ) -> typing.List[torch.utils.data.DataLoader]:
+def load_cifar10(batch_size: int, validation_fraction: float = 0.1, transfer_learning: bool = False,
+                 cmsisnn: bool = False) -> typing.List[torch.utils.data.DataLoader]:
     
-    transform_train, transform_test = get_cifar10_transforms(transfer_learning)
+    transform_train, transform_test = get_cifar10_transforms(transfer_learning, cmsisnn)
 
     data_train = datasets.CIFAR10('data/cifar10',
                                   train=True,

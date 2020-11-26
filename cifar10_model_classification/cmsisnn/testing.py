@@ -71,7 +71,7 @@ def test_conv2d():
     act_hist_conv = output_data.abs().clamp(min=1.0).log2().ceil().histc(16, 0, 15)
     act_hist = [act_hist_conv]
     run_stats = RunStats(act_hist=act_hist, batchnorm_mv=[], input_shape=(3, 2, 2))
-    converter = Converter(transforms, run_stats, "q7_t")
+    converter = Converter(transforms, run_stats)
     converter.convert_conv2d(layer, converter.layers[-1])
     cmsis_layers = converter.layers
     root_path = pathlib.Path("../cmsis_nn")
@@ -133,7 +133,7 @@ def test_linear():
     act_hist = [act_hist_conv.tolist()]
     print(act_hist)
     run_stats = RunStats(act_hist=act_hist, batchnorm_mv=[], input_shape=(3, 2, 2))
-    converter = Converter(transforms, run_stats, "q7_t")
+    converter = Converter(transforms, run_stats)
     converter.convert_linear(layer, converter.layers[-1])
     cmsis_layers = converter.layers
     root_path = pathlib.Path("../cmsis_nn")
@@ -159,9 +159,6 @@ def test_linear():
     print(output_quant)
     print(f"Got: {fc_act_values.shape}")
     print(fc_act_values)
-
-
-# Next to check: max pooling (weird padding + dilation)
 
 
 if __name__ == "__main__":

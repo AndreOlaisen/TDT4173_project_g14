@@ -9,20 +9,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-"""
-try:
-    from .convert import QFormat
-except ImportError:
-    from convert import QFormat
-
-
-def get_layer_act_format(layers, name):
-    for l in layers:
-        if l["name"] == name:
-            return QFormat(*l["parameters"]["out_qformat"])
-    raise KeyError()
-"""
-
 def parse_int8_str(val, qformat=None):
     """
     Interpret hexadecimal string (e.g. '0x01') as a signed 8-bit integer value.

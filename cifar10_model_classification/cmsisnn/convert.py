@@ -23,6 +23,9 @@ from model_export import make_model_filename, make_stats_filename, make_transfor
 ############################################################################
 
 class LayerType(Enum):
+    """
+    Supported layer types for CMSIS-NN.
+    """
     INPUT = "INPUT"
     CONV_RGB = "CONV_RGB"
     CONV = "CONV"
@@ -43,6 +46,9 @@ NormalizeParams = namedtuple("normalize", ["mean", "shift"])
 
 
 class Layer:
+    """
+    Data structure for keeping track of parameters for the converted CMSIS-NN model.
+    """
     def __init__(self, layer_type, identifier, module, prev=None):
         self.type = layer_type
         self.identifier = identifier
@@ -144,23 +150,18 @@ def reorder_linear(weight, bias, prev_dim):
         (HWC format)
     """
     if prev_dim.ch > 1:
-        print("Input dimension:", prev_dim)
-        print("Weights before:")
-        print(weight)
         weight_shape = weight.shape
         input_shape = (weight_shape[0], prev_dim.ch, prev_dim.dim, prev_dim.dim)
         w = weight.reshape(input_shape)
         w = w.permute(0, 2, 3, 1)
-        print("Permuted weight shape:", w.shape)
         w = w.reshape(weight_shape)
-        print("Weights after:")
-        print(w)
         return w, bias
     else:
         return weight, bias
 
 
 def calc_qformat(weights, databits):
+    """ Calculate Q-format for weights based on min and max values. """
     min_wt_abs = abs(weights.min().item())
     max_wt_abs = abs(weights.max().item())
     ibits = max(int(math.ceil(math.log2(max(min_wt_abs, max_wt_abs)))), 0)
@@ -169,6 +170,7 @@ def calc_qformat(weights, databits):
 
 
 def calc_quantized(weights, fbits, truncate=False):
+    """ Quantize weights to Qx.fbits format """
     if isinstance(weights, torch.Tensor):
         w = weights * (2**fbits)
         if not truncate:
@@ -184,12 +186,14 @@ def calc_quantized(weights, fbits, truncate=False):
 
 
 def quantize(weights, databits):
+    """ Quantize weights automatically to fit in databits """
     qformat = calc_qformat(weights, databits)
     quant_weight = calc_quantized(weights, qformat.fbits) 
     return quant_weight, qformat
 
 
 def convert_transforms(transforms, input_shape, databits):
+    """ Calculate input parameters based on transforms and input shape """
     if len(input_shape) != 3:
         raise RuntimeError("Only inputs of ch x dim x dim are supported.")
     if isinstance(transforms, torchvision.transforms.Compose):
@@ -225,16 +229,15 @@ def convert_transforms(transforms, input_shape, databits):
 
 
 class Converter:
-    def __init__(self, transforms, run_stats, datatype, quant_range=1.0, use_opt=False):
+    """ Class for converting a PyTorch model to generation parameters for CMSIS-NN """
+    def __init__(self, transforms, run_stats, quant_range=1.0, use_opt=False):
         self.layers = []
         self.id_counter = Counter()
         self.run_stats = run_stats
-        if datatype == "q7_t":
-            self.databits = 8 - 1  # 8 bits minus sign bit
-        else:
-            self.databits = 16 - 1  # 16 bits minus sign bit
+        self.databits = 8 - 1  # 8 bits minus sign bit
         self.batchnorm_mvs = [mv for mv in run_stats.batchnorm_mv]
         self.act_formats = self._calc_act_formats(run_stats.act_hist, quant_range)
+        # Convert input layer
         input_layer = convert_transforms(transforms, run_stats.input_shape, self.databits)
         self.layers.append(input_layer)
 
@@ -245,17 +248,16 @@ class Converter:
         return count
 
     def _calc_act_formats(self, act_hists, pct_threshold=1.0):
+        """ Calculate Q-format for activations with log2 histograms act_hists """
         formats = []
         for hist in act_hists:
             cumulative = itertools.accumulate(hist)
             hist_sum = sum(hist)
-
-            # FIXME
             cumulative = [c / hist_sum for c in cumulative]
             for i, (val, pct) in enumerate(zip(hist[1:self.databits + 1], cumulative[:self.databits + 2])):
                 if val == 0.0 or pct >= pct_threshold:
                     if val != 0.0:
-                        print(f"Clipping output at {pct * 100.0}%.")
+                        print(f"Clipping activation output at {pct * 100.0}%.")
                     formats.append(QFormat(i, self.databits - i))
                     break
             else:
@@ -266,6 +268,7 @@ class Converter:
         return formats
 
     def _new_default_layer(self, layer_type, module, prev=None):
+        """ Create a new layer that inherits dimension and Q-format from the previous layer. """
         layer = Layer(layer_type, self._id_gen(layer_type), module, prev)
         layer.inherit_param(Dimension, "out", Dimension, "in")
         layer.inherit_param(QFormat, "out", QFormat, "in")
@@ -274,10 +277,7 @@ class Converter:
         return layer
 
     def _quantize(self, weight, bias, qformat_in, qformat_out):
-        """
-        Quantize weights/biases
-        """
-        # Quantize weights/biases
+        """ Quantize weights/biases """
         weight, qformat_weight = quantize(weight, self.databits)
         bias, qformat_bias = quantize(bias, self.databits)
 
@@ -308,10 +308,12 @@ class Converter:
 
     @staticmethod
     def _calc_kernel_out_dim(in_dim, k_params):
+        """ Calculate output dimensions from convolutional or pooling layer. """
         return int((in_dim.dim - k_params.dim + 2 * k_params.padding) / k_params.stride) + 1
 
     @staticmethod
     def _calc_2d_space(in_dim, out_dim):
+        """ Calculate space required for 2d dimensions. """
         return in_dim.ch * in_dim.dim**2, out_dim.ch * out_dim.dim**2
 
     def convert_conv2d(self, mod, prev):
@@ -319,7 +321,7 @@ class Converter:
         # The first conv layer should be conv_rgb, others should be conv.
         conv_type = LayerType.CONV_RGB if prev.type == LayerType.INPUT else LayerType.CONV
         layer = self._new_default_layer(conv_type, mod, prev)
-        # NOTE: Assumes square parameters
+        # NOTE: Assumes square parameters, no dilation
         k_params = KernelParams(mod.kernel_size[0], mod.stride[0], mod.padding[0])
         layer.set_param(k_params)
         # Calculate output dimensions
@@ -390,7 +392,7 @@ class Converter:
         self.layers.append(layer)
 
     def fold_batchnorm(self, mod, prev):
-        print(f"Converting batchnorm layer ({mod}).")
+        print(f"Folding batchnorm layer ({mod}).")
         bn_means, bn_vars = self.batchnorm_mvs.pop(0)
         valid_2d = type(mod) == nn.BatchNorm2d and \
                    (prev.type == LayerType.CONV_RGB or prev.type == LayerType.CONV)
@@ -435,6 +437,7 @@ class Converter:
         self.layers.append(layer)
 
     def convert(self, mod):
+        """ Convert next module mod. """
         prev = None if len(self.layers) == 0 else self.layers[-1]
         if type(mod) == nn.Conv2d:
             self.convert_conv2d(mod, prev)
@@ -456,8 +459,9 @@ class Converter:
             print("Unknown module:", mod)
 
 
-def convert_parameters(model, transforms, run_stats, datatype, quant_range=1.0):
-    converter = Converter(transforms, run_stats, datatype, quant_range)
+def convert_parameters(model, transforms, run_stats, quant_range=1.0):
+    """ Convert model, transforms and run stats to parameters for CMSIS-NN generation. """
+    converter = Converter(transforms, run_stats, quant_range)
     model.apply(converter.convert)
     return converter.layers
 
@@ -466,13 +470,16 @@ def convert_parameters(model, transforms, run_stats, datatype, quant_range=1.0):
 # Code generation
 ############################################################################
 
+""" Data structure for holding code file output destinations. """
 GenOutput = namedtuple("GenOutput", [
     "params",
     "weights",
     "statvars",
     "statvars_debug",
+    "statfunc",
     "function"])
 
+""" Data structures for holding available buffers. """
 BufferParameters = namedtuple("BufferParameters", [
     "buf_in",
     "buf_out",
@@ -491,6 +498,7 @@ def initializer_list(iterable, key):
 
 
 def gen_output_dump(layer, outputs, buffer):
+    """ Generate code for dumping layer outputs to file. """
     name = layer.get_layer_name()
     name_var = C.variable(f"{name.lower()}_name", "char",
                           static=True, const=True, array="")
@@ -507,12 +515,14 @@ def gen_output_dump(layer, outputs, buffer):
 
 
 def gen_status_check(output, buffer):
+    """ Generate call to ARM_STATUS_CHECK (debug macro). """
     output.append(C.statement(C.fcall(
         "ARM_STATUS_CHECK", [buffer.name]
     )))
 
 
 def gen_macros(layer, output, param, cat=None):
+    """ Generate macro definitions for a given parameter. """
     values = layer.get_param(param, cat)
     for member in values._fields:
         name = layer.get_param_macro_name(member, param, cat)
@@ -525,6 +535,7 @@ def gen_macros(layer, output, param, cat=None):
 
 
 def gen_layer_macros(layer, outputs):
+    """ Generate macro definitions for a layer. """
     if layer.has_param(NormalizeParams):
         gen_macros(layer, outputs.params, NormalizeParams)
     gen_macros(layer, outputs.params, Dimension, "in")
@@ -541,6 +552,7 @@ def gen_layer_macros(layer, outputs):
 
 
 def gen_vars(layer, output, datatype, param, cat=None):
+    """ Generate static variable definitions for a given parameter. """
     variables = []
     values = layer.get_param(param, cat)
     for member in values._fields:
@@ -554,13 +566,34 @@ def gen_vars(layer, output, datatype, param, cat=None):
 
 
 def gen_weight_bias_vars(layer, outputs, datatype):
+    """ Generate weight and bias variable definitions. """
     comment = C.comment(f" {layer.get_layer_name()} ")
     outputs.statvars.append(comment)
     return gen_vars(layer, outputs.statvars, datatype, Weight)
 
 
+PREPROCESS_FUNCTION = \
+"""
+static inline q7_t preprocess(uint8_t c, int mean, unsigned int shift)
+{
+    int full_shift = shift + 7;
+    int x = c;
+    x = (x - mean) << 7;
+    x = x + NN_ROUND(full_shift);
+    x = x >> full_shift;
+    return (q7_t) __SSAT(x, 8);
+}
+"""
+
+
+def gen_preprocess_func(output):
+    output.append(PREPROCESS_FUNCTION)
+
+
 def gen_input_code(layer, outputs, buffers, datatype, debug=False):
+    """ Generate input preprocessing code. """
     # TODO: Fix the implementation
+    gen_preprocess_func(outputs.statfunc)
     gen_layer_macros(layer, outputs)
     in_dim = layer.get_param(Dimension, "in")
     in_fbits_macro = layer.get_param_macro_name("fbits", QFormat, "in")
@@ -601,6 +634,7 @@ def gen_input_code(layer, outputs, buffers, datatype, debug=False):
 
 
 def gen_common_conv_code(layer, outputs, buffers, datatype, name, debug=False):
+    """ Generate Convolution code that is shared by Conv/Conv RGB. """
     gen_layer_macros(layer, outputs)
     weight_var, bias_var = gen_weight_bias_vars(layer, outputs, datatype)
     f = C.fcall(name, [
@@ -628,16 +662,19 @@ def gen_common_conv_code(layer, outputs, buffers, datatype, name, debug=False):
 
 
 def gen_conv_rbg_code(layer, outputs, buffers, datatype, debug=False):
+    """ Generate input (RGB) Convolution code. """
     name = f"arm_convolve_HWC_{get_datatype_prefix(datatype)}_RGB"
     return gen_common_conv_code(layer, outputs, buffers, datatype, name, debug)
 
 
 def gen_conv_code(layer, outputs, buffers, datatype, debug=False):
+    """ Generate Convolution code. """
     name = f"arm_convolve_HWC_{get_datatype_prefix(datatype)}_basic"
     return gen_common_conv_code(layer, outputs, buffers, datatype, name, debug)
 
 
 def gen_relu_code(layer, outputs, buffers, datatype, debug=False):
+    """ Generate ReLU code. """
     gen_layer_macros(layer, outputs)
     f = C.fcall(f"arm_relu_{get_datatype_prefix(datatype)}", [
         buffers.buf_in.name,
@@ -652,6 +689,7 @@ def gen_relu_code(layer, outputs, buffers, datatype, debug=False):
 
 
 def gen_maxpool_code(layer, outputs, buffers, datatype, debug=False):
+    """ Generate MaxPool code. """
     gen_layer_macros(layer, outputs)
     f = C.fcall(f"arm_maxpool_{get_datatype_prefix(datatype)}_HWC", [
         buffers.buf_in.name,
@@ -671,6 +709,7 @@ def gen_maxpool_code(layer, outputs, buffers, datatype, debug=False):
 
 
 def gen_fc_code(layer, outputs, buffers, datatype, debug=False):
+    """ Generate Fully Connected code. """
     gen_layer_macros(layer, outputs)
     weight_var, bias_var = gen_weight_bias_vars(layer, outputs, datatype)
     dim_in_macro = layer.get_param_macro_name("dim", Dimension, "in")
@@ -694,6 +733,7 @@ def gen_fc_code(layer, outputs, buffers, datatype, debug=False):
 
 
 def gen_softmax_code(layer, outputs, buffers, datatype, debug=False):
+    """ Generate SoftMax code. """
     gen_layer_macros(layer, outputs)
     f = C.fcall(f"arm_softmax_{get_datatype_prefix(datatype)}", [
         buffers.buf_in.name,
@@ -707,8 +747,9 @@ def gen_softmax_code(layer, outputs, buffers, datatype, debug=False):
 
 
 def gen_layer_code(layers, outputs, param_in, param_out, datatype, debug=False):
+    """ Generate code for layers in model. """
     # Calculate size of working buffers
-    # TODO: could optimize space usage better here instead of allocating double the max
+    # XXX: could optimize space usage better here instead of allocating double the max
     io_buf_half_len = 0
     tmp_buf_len = 0
     for l in layers:
@@ -776,10 +817,11 @@ def gen_layer_code(layers, outputs, param_in, param_out, datatype, debug=False):
 
 def write_code(layers, model_source, model_header, param_header,
                weight_header, datatype, debug=False):
+    """ Write CMSIS-NN code. """
     # Create static variable definition section
     outputs = GenOutput(params=C.sequence(), weights=C.sequence(),
                         statvars=C.sequence(), statvars_debug=C.sequence(),
-                        function=C.sequence())
+                        statfunc=C.sequence(), function=C.sequence())
 
     # Create "nn_forward_pass" function parameters
     param_in = C.variable("img", "uint8_t", pointer=True)
@@ -821,6 +863,8 @@ def write_code(layers, model_source, model_header, param_header,
     # Write static variables
     ms.code.extend(outputs.statvars)
     ms.code.append(C.blank())
+    ms.code.extend(outputs.statfunc)
+    ms.code.append(C.blank())
 
     # Write forward pass function
     fw = C.function("nn_forward_pass", typename="int")
@@ -858,17 +902,16 @@ def write_code(layers, model_source, model_header, param_header,
 
 
 def cmsis_nn_convert(model_dir, model_name, gen_dir, artifact_dir, debug=False):
+    """ Load export model/statistics and generate CMSIS-NN code implementation. """
     model_path = Path(model_dir)/make_model_filename(model_name)
     transform_path = Path(model_dir)/make_transform_filename(model_name)
     stat_path = Path(model_dir)/make_stats_filename(model_name) 
     dump_path = artifact_dir/f"{model_name}_layers.json"
+    gen_dir.mkdir(exist_ok=True)
     param_header = gen_dir/f"{model_name}_params.h"
     weight_header = gen_dir/f"{model_name}_weights.h"
     model_header = gen_dir/f"{model_name}_model.h"
     model_source = gen_dir/f"{model_name}_model.c"
-
-    # FIXME: assume q7_t
-    datatype = "q7_t"
 
     # Convert model
     print(f"Loading model from {model_path}.")
@@ -879,10 +922,10 @@ def cmsis_nn_convert(model_dir, model_name, gen_dir, artifact_dir, debug=False):
     print(f"Loading run stats from {stat_path}.")
     run_stats = torch.load(stat_path)
     print("Converting model parameters.")
-    layers = convert_parameters(model, transforms, run_stats, datatype, 0.995)
+    layers = convert_parameters(model, transforms, run_stats, 0.995)
     print(f"Dumping layer JSON to {dump_path}.")
     dump_layer_json(dump_path, layers)
 
     # Generate source code/headers
     print("Generating CMSIS-NN code.")
-    write_code(layers, model_source, model_header, param_header, weight_header, datatype, debug)
+    write_code(layers, model_source, model_header, param_header, weight_header, "q7_t", debug)

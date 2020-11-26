@@ -81,6 +81,8 @@ def load_best_checkpoint(directory: pathlib.Path):
 
 def create_export_path(name):
     script_path = pathlib.Path(__file__).parent.absolute()
-    path = script_path/"exports"/name
+    parent = script_path/"exports"
+    parent.mkdir(exist_ok=True)
+    path = parent/name
     path.mkdir(exist_ok=True)
     return path

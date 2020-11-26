@@ -486,12 +486,12 @@ def create_plots(trainer1: Trainer, name: str):
     return
 
 
-def train_model(model_cls=Model_1, skip_train=False):
+def train_model(model_cls=Model_1, skip_train=False, cmsisnn=False):
     epochs = 10
     batch_size = 64
     learning_rate = 5e-2
     early_stop_count = 4
-    dataloaders = load_cifar10(batch_size)
+    dataloaders = load_cifar10(batch_size, cmsisnn=cmsisnn)
     model = model_cls(image_channels=3, num_classes=10)
     trainer1 = Trainer(
         batch_size,

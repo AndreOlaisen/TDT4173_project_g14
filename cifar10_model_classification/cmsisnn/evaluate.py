@@ -18,6 +18,8 @@ def evaluate_generated(program_path, img_path, img_label, count=1, save_path=Non
     else:
         files = list(img_path.iterdir())
     counter = collections.defaultdict(int)
+    if count < 0:
+        count = len(files)
     ties = 0
     for f in files[:min(count, len(files))]:
         args = [program_path, f]
