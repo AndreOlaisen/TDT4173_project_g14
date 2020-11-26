@@ -44,11 +44,11 @@ def plot_histogram(axes, hist, label, normalized=True):
         min_pct = (hist[0] / hist_sum) * 100.0
         max_pct = (hist[-1] / hist_sum) * 100.0
         zero_pct = (hist[128] / hist_sum) * 100.0
-    text = f"Min: {min_pct:.2g}%, Max: {max_pct:.2g}%, Z: {zero_pct:.2g}%"
+    # text = f"Min: {min_pct:.2g}%, Max: {max_pct:.2g}%, Z: {zero_pct:.2g}%"
     axes.bar(list(range(-128, 127 + 1)), hist, width=1.0, label=label)
     props = dict(boxstyle='round', facecolor='gray', alpha=0.5)
-    axes.text(0.75, 0.90, text, transform=axes.transAxes, fontsize=10,
-        verticalalignment='top', bbox=props)
+    # axes.text(0.75, 0.90, text, transform=axes.transAxes, fontsize=10,
+    #    verticalalignment='top', bbox=props)
 
 
 def plot_activation_histograms(hists, show=True, save_path=None):
